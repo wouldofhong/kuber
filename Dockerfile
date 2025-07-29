@@ -1,0 +1,55 @@
+# --- 빌더 스테이지 ---
+FROM rust:1.88.0-slim-bookworm AS builder
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# musl-tools 설치 및 rustup target 추가
+# ring 크레이트 빌드를 위해 musl-tools (musl-gcc 등)를 설치합니다.
+# 그리고 필요한 musl target을 rustup에 추가합니다.
+RUN apt-get update && apt-get install -y musl-tools pkg-config && rm -rf /var/lib/apt/lists/* && \
+    rustup target add x86_64-unknown-linux-musl
+
+# musl 타겟용 링커 및 C 컴파일러 환경 변수 설정
+# ring 크레이트의 빌드 스크립트가 이 환경 변수를 사용하여 올바른 툴체인을 찾습니다.
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld
+ENV CC=x86_64-linux-musl-gcc
+ENV CXX=x86_64-linux-musl-g++
+
+# Cargo.toml과 Cargo.lock 파일을 먼저 복사하여 종속성 캐싱을 활용
+COPY Cargo.toml Cargo.lock ./
+
+# 필요한 경우 .cargo/config.toml 파일도 복사
+# COPY .cargo/config.toml .cargo/
+
+# 종속성만 빌드 (실제 코드 빌드 전에) - musl 타겟으로 빌드
+RUN mkdir ./src
+
+# 모든 소스 코드 복사
+COPY ./src ./src
+
+# 프로덕션 빌드 (작은 최종 이미지 크기를 위해 --release 사용)
+# musl 타겟을 사용하여 정적으로 링크된 실행 파일을 생성하여 최종 이미지에 런타임 종속성을 줄입니다.
+RUN cargo build --release --target x86_64-unknown-linux-musl
+
+# --- 최종 (런타임) 스테이지 ---
+FROM debian:bookworm-slim
+
+# 필요한 경우 CA 인증서 설치 (HTTPS 요청 등을 하는 경우)
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# 빌더 스테이지에서 컴파일된 실행 파일을 최종 이미지로 복사
+# "kuber" 부분을 실제 Rust 프로젝트의 바이너리 이름으로 변경하세요.
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/kuber /usr/local/bin/kuber
+
+# 애플리케이션 실행
+# CMD ["/usr/local/bin/kuber"]
+
+# 필요한 경우 포트 노출 (애플리케이션이 웹 서버인 경우)
+# EXPOSE 8080
+
+CMD tail -f /dev/null
+# CMD ["/usr/local/bin/kuber"]
+
+# 필요한 경우 포트 노출 (애플리케이션이 웹 서버인 경우)
+# EXPOSE 8080

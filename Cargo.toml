@@ -12,3 +12,7 @@ serde_json = "1.0"
 anyhow = "1.0"
 regex = "1.7"
 lazy_static = "1.4.0"
+
+[[bin]]
+name = "kuber" # 빌드될 바이너리 이름
+path = "src/main.rs" # 실제 main.rs 파일의 경로
